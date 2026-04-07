@@ -1,0 +1,22 @@
+# Virtual environment
+venv/
+face/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Django
+db.sqlite3
+*.log
+
+# VS Code
+.vscode/
+
+# Environment variables
+.env
+
+# Mac / Windows junk
+.DS_Store
+Thumbs.dbgit init
