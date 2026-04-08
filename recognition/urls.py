@@ -7,8 +7,8 @@ from . import views
 
 urlpatterns = [
     # ── Auth ─────────────────────────────────────────────────
-    path("auth/superadmin/login/", views.SuperAdminLoginView.as_view()),
-    path("auth/hr/login/",         views.HRLoginView.as_view()),
+    path("auth/superadmin/login/", views.SuperAdminLoginView.as_view()), 
+    path("auth/hr/login/",         views.HRLoginView.as_view()), 
 
     # ── SuperAdmin → HR management ────────────────────────────
     path("admin/hr/",              views.HRUserListCreateView.as_view()),
@@ -21,7 +21,7 @@ urlpatterns = [
     # ── HR → Face enrollment ──────────────────────────────────
     path("faces/enroll/",                       views.FaceEnrollView.as_view()),
     path("faces/<int:employee_id>/",            views.FaceListView.as_view()),
-    path("faces/<int:pk>/delete/",              views.FaceDeleteView.as_view()),
+    path("faces/<int:pk>/delete/",              views.FaceDeleteView.as_view()), #Not checked yet
 
     # ── Face verification (camera / kiosk) ────────────────────
     path("faces/verify/",          views.FaceVerifyView.as_view()),
@@ -31,6 +31,7 @@ urlpatterns = [
     path("attendance/check-out/",            views.CheckOutView.as_view()),
     path("attendance/",                      views.AttendanceListView.as_view()),
     path("attendance/<int:employee_id>/",    views.EmployeeAttendanceView.as_view()),
+    path("attendance/duration/<int:employee_id>/", views.TotalDurationView.as_view()),
 
     # ── Verification logs ─────────────────────────────────────
     path("logs/",                  views.VerificationLogListView.as_view()),

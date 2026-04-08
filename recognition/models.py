@@ -63,6 +63,9 @@ class Face(models.Model):
 
 
 class Attendance(models.Model):
+    """Tracks individual check-in/check-out sessions.
+    Multiple sessions per day allowed for employees who leave and return.
+    """
     employee = models.ForeignKey(
         Employee, on_delete=models.CASCADE, related_name="attendances"
     )
@@ -77,13 +80,39 @@ class Attendance(models.Model):
             return round(delta.total_seconds() / 60, 1)
         return None
 
+    @classmethod
+    def total_duration_for_date(cls, employee_id, date):
+        """Calculate total minutes worked by employee on a given date."""
+        sessions = cls.objects.filter(
+            employee_id=employee_id, date=date, check_out__isnull=False
+        )
+        total_seconds = 0
+        for session in sessions:
+            if session.check_in and session.check_out:
+                delta = session.check_out - session.check_in
+                total_seconds += delta.total_seconds()
+        return round(total_seconds / 60, 1) if total_seconds > 0 else 0.0
+
+    @classmethod
+    def total_duration_for_range(cls, employee_id, from_date, to_date):
+        """Calculate total minutes worked by employee between two dates."""
+        sessions = cls.objects.filter(
+            employee_id=employee_id, date__gte=from_date, date__lte=to_date,
+            check_out__isnull=False
+        )
+        total_seconds = 0
+        for session in sessions:
+            if session.check_in and session.check_out:
+                delta = session.check_out - session.check_in
+                total_seconds += delta.total_seconds()
+        return round(total_seconds / 60, 1) if total_seconds > 0 else 0.0
+
     def __str__(self):
         return f"{self.employee.name} | {self.date} | in={self.check_in} out={self.check_out}"
 
     class Meta:
         db_table = "attendance"
         ordering = ["-date", "-check_in"]
-        unique_together = [("employee", "date")]  # One record per employee per day
 
 
 class VerificationLog(models.Model):

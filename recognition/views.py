@@ -343,6 +343,8 @@ class CheckInView(APIView):
     """
     POST /api/attendance/check-in/
     Body: multipart/form-data { image }
+    
+    Creates a new attendance session. Allows multiple check-ins per day.
     """
     parser_classes = [MultiPartParser]
 
@@ -369,22 +371,30 @@ class CheckInView(APIView):
             )
 
         today = timezone.localdate()
+        now = timezone.now()
 
-        # ✅ Prevent double check-in
-        attendance, created = Attendance.objects.get_or_create(
+        # Check if employee already has an unclosed session today
+        unclosed_session = Attendance.objects.filter(
             employee_id=result.employee_id,
             date=today,
-            defaults={"check_in": timezone.now()},
-        )
+            check_out__isnull=True,
+        ).first()
 
-        if not created:
+        if unclosed_session:
             return Response(
                 {
-                    "detail": "Already checked in today.",
-                    "check_in": attendance.check_in,
+                    "detail": "Already checked in. Please check out first.",
+                    "check_in": unclosed_session.check_in,
                 },
                 status=status.HTTP_409_CONFLICT,
             )
+
+        # ✅ Create new attendance session
+        attendance = Attendance.objects.create(
+            employee_id=result.employee_id,
+            date=today,
+            check_in=now,
+        )
 
         VerificationLog.objects.create(
             employee_id=result.employee_id, success=True,
@@ -397,6 +407,7 @@ class CheckInView(APIView):
                 "employee_id": result.employee_id,
                 "name": result.employee_name,
                 "confidence": result.confidence,
+                "session_id": attendance.id,
                 "check_in": attendance.check_in,
                 "date": today,
             },
@@ -412,6 +423,8 @@ class CheckOutView(APIView):
     """
     POST /api/attendance/check-out/
     Body: multipart/form-data { image }
+    
+    Closes the latest unclosed attendance session.
     """
     parser_classes = [MultiPartParser]
 
@@ -438,27 +451,23 @@ class CheckOutView(APIView):
             )
 
         today = timezone.localdate()
+        now = timezone.now()
 
-        try:
-            attendance = Attendance.objects.get(
-                employee_id=result.employee_id, date=today
-            )
-        except Attendance.DoesNotExist:
+        # Find the latest unclosed session for today
+        attendance = Attendance.objects.filter(
+            employee_id=result.employee_id,
+            date=today,
+            check_out__isnull=True,
+        ).order_by("-check_in").first()
+
+        if not attendance:
             return Response(
-                {"detail": "No check-in record found for today."},
+                {"detail": "No active check-in session found for today."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if attendance.check_out:
-            return Response(
-                {
-                    "detail": "Already checked out today.",
-                    "check_out": attendance.check_out,
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
-
-        attendance.check_out = timezone.now()
+        # ✅ Close the session
+        attendance.check_out = now
         attendance.save(update_fields=["check_out"])
 
         VerificationLog.objects.create(
@@ -472,6 +481,7 @@ class CheckOutView(APIView):
                 "employee_id": result.employee_id,
                 "name": result.employee_name,
                 "confidence": result.confidence,
+                "session_id": attendance.id,
                 "check_in": attendance.check_in,
                 "check_out": attendance.check_out,
                 "duration_minutes": attendance.duration_minutes(),
@@ -520,6 +530,56 @@ class EmployeeAttendanceView(APIView):
     def get(self, request, employee_id):
         qs = Attendance.objects.filter(employee_id=employee_id).select_related("employee")
         return Response(AttendanceSerializer(qs, many=True).data)
+
+
+class TotalDurationView(APIView):
+    """
+    GET /api/attendance/duration/{employee_id}/
+    Query params: date, from_date, to_date
+    
+    Returns total time worked by employee for given period.
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsHROrSuperAdmin]
+
+    def get(self, request, employee_id):
+        try:
+            employee = Employee.objects.get(pk=employee_id)
+        except Employee.DoesNotExist:
+            return Response({"detail": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        date = request.query_params.get("date")
+        from_date = request.query_params.get("from_date")
+        to_date = request.query_params.get("to_date")
+
+        if date:
+            # Single day total
+            total_minutes = Attendance.total_duration_for_date(employee_id, date)
+            return Response({
+                "employee_id": employee_id,
+                "employee_name": employee.name,
+                "date": date,
+                "total_duration_minutes": total_minutes,
+                "total_duration_hours": round(total_minutes / 60, 2),
+            })
+        
+        elif from_date and to_date:
+            # Date range total
+            total_minutes = Attendance.total_duration_for_range(employee_id, from_date, to_date)
+            return Response({
+                "employee_id": employee_id,
+                "employee_name": employee.name,
+                "from_date": from_date,
+                "to_date": to_date,
+                "total_duration_minutes": total_minutes,
+                "total_duration_hours": round(total_minutes / 60, 2),
+            })
+        
+        else:
+            return Response(
+                {"detail": "Provide either 'date' or both 'from_date' and 'to_date'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 # ─────────────────────────────────────────────

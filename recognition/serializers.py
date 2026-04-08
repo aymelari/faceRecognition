@@ -86,17 +86,21 @@ class FaceVerifyResponseSerializer(serializers.Serializer):
 class AttendanceSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source="employee.name", read_only=True)
     duration_minutes = serializers.SerializerMethodField()
+    session_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Attendance
         fields = [
-            "id", "employee", "employee_name",
+            "session_id", "employee", "employee_name",
             "date", "check_in", "check_out", "duration_minutes",
         ]
         read_only_fields = fields
 
     def get_duration_minutes(self, obj):
         return obj.duration_minutes()
+
+    def get_session_id(self, obj):
+        return obj.id
 
 
 class CheckInOutSerializer(serializers.Serializer):
